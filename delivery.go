@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/opensourceways/community-robot-lib/githubclient"
-	"github.com/opensourceways/community-robot-lib/kafka"
-	"github.com/opensourceways/community-robot-lib/mq"
+	"github.com/opensourceways/kafka-lib/kafka"
+	"github.com/opensourceways/kafka-lib/mq"
+	"github.com/opensourceways/robot-github-lib/client"
 	"github.com/sirupsen/logrus"
 )
 
@@ -22,7 +22,7 @@ func (c *delivery) wait() {
 
 // ServeHTTP validates an incoming webhook and puts it into the event channel.
 func (c *delivery) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	eventType, guid, payload, ok, _ := githubclient.ValidateWebhook(w, r, c.hmac)
+	eventType, guid, payload, ok, _ := client.ValidateWebhook(w, r, c.hmac)
 	if !ok {
 		return
 	}
