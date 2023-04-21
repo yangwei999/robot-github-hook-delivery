@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/opensourceways/community-robot-lib/mq"
+	"github.com/opensourceways/kafka-lib/mq"
 )
 
 type configuration struct {
