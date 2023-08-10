@@ -54,7 +54,7 @@ func main() {
 	}
 
 	configAgent := config.NewConfigAgent(func() config.Config {
-		return new(configuration)
+		return new(Config)
 	})
 	if err := configAgent.Start(o.service.ConfigFile); err != nil {
 		logrus.WithError(err).Fatal("Error starting config agent.")
@@ -71,7 +71,7 @@ func main() {
 
 	d := delivery{hmac: getHmac, topic: o.topic}
 
-	if err := initBroker(configAgent); err != nil {
+	if err := initBroker(&configAgent); err != nil {
 		logrus.WithError(err).Fatal("Error init broker.")
 	}
 
@@ -95,22 +95,16 @@ func main() {
 	interrupts.ListenAndServe(httpServer, o.service.GracePeriod)
 }
 
-func initBroker(agent config.ConfigAgent) error {
-	cfg := &configuration{}
+func initBroker(agent *config.ConfigAgent) error {
+	cfg := &Config{}
 	_, c := agent.GetConfig()
 
-	if v, ok := c.(*configuration); ok {
+	if v, ok := c.(*Config); ok {
 		cfg = v
 	}
 
-	tlsConfig, err := cfg.Config.TLSConfig.TLSConfig()
-	if err != nil {
-		return err
-	}
-
-	err = kafka.Init(
-		mq.Addresses(cfg.Config.Addresses...),
-		mq.SetTLSConfig(tlsConfig),
+	err := kafka.Init(
+		mq.Addresses(cfg.mqConfig().Addresses...),
 		mq.Log(logrus.WithField("module", "broker")),
 	)
 
