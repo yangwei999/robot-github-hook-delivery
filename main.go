@@ -54,7 +54,7 @@ func main() {
 	}
 
 	configAgent := config.NewConfigAgent(func() config.Config {
-		return new(Config)
+		return new(configuration)
 	})
 	if err := configAgent.Start(o.service.ConfigFile); err != nil {
 		logrus.WithError(err).Fatal("Error starting config agent.")
@@ -96,10 +96,10 @@ func main() {
 }
 
 func initBroker(agent *config.ConfigAgent) error {
-	cfg := &Config{}
+	cfg := &configuration{}
 	_, c := agent.GetConfig()
 
-	if v, ok := c.(*Config); ok {
+	if v, ok := c.(*configuration); ok {
 		cfg = v
 	}
 

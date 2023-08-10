@@ -10,11 +10,11 @@ import (
 
 var reIpPort = regexp.MustCompile(`^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}:[1-9][0-9]*$`)
 
-type Config struct {
+type configuration struct {
 	Address string `json:"address" required:"true"`
 }
 
-func (cfg *Config) Validate() error {
+func (cfg *configuration) Validate() error {
 	if r := cfg.parseAddress(); len(r) == 0 {
 		return errors.New("invalid mq address")
 	}
@@ -22,16 +22,16 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-func (cfg *Config) SetDefault() {
+func (cfg *configuration) SetDefault() {
 }
 
-func (cfg *Config) mqConfig() mq.MQConfig {
+func (cfg *configuration) mqConfig() mq.MQConfig {
 	return mq.MQConfig{
 		Addresses: cfg.parseAddress(),
 	}
 }
 
-func (cfg *Config) parseAddress() []string {
+func (cfg *configuration) parseAddress() []string {
 	v := strings.Split(cfg.Address, ",")
 	r := make([]string, 0, len(v))
 	for i := range v {
