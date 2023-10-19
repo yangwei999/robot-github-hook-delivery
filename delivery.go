@@ -4,8 +4,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/opensourceways/kafka-lib/kafka"
-	"github.com/opensourceways/kafka-lib/mq"
+	kafka "github.com/opensourceways/kafka-lib/agent"
 	"github.com/opensourceways/robot-github-lib/client"
 	"github.com/sirupsen/logrus"
 )
@@ -48,16 +47,11 @@ func (c *delivery) publish(payload []byte, h http.Header, l *logrus.Entry) error
 		"User-Agent":        "Robot-Github-Access",
 	}
 
-	msg := mq.Message{
-		Header: header,
-		Body:   payload,
-	}
-
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 
-		if err := kafka.Publish(c.topic, &msg); err != nil {
+		if err := kafka.Publish(c.topic, header, payload); err != nil {
 			l.WithError(err).Error("failed to publish msg")
 		} else {
 			l.Infof("publish message to %s topic success", c.topic)

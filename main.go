@@ -2,14 +2,12 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
-	"github.com/opensourceways/kafka-lib/kafka"
-	"github.com/opensourceways/kafka-lib/mq"
-	"github.com/opensourceways/server-common-lib/config"
+	kafka "github.com/opensourceways/kafka-lib/agent"
 	"github.com/opensourceways/server-common-lib/interrupts"
 	"github.com/opensourceways/server-common-lib/logrusutil"
 	liboptions "github.com/opensourceways/server-common-lib/options"
@@ -21,15 +19,11 @@ const component = "robot-github-hook-delivery"
 
 type options struct {
 	service        liboptions.ServiceOptions
+	enableDebug    bool
 	hmacSecretFile string
-	topic          string
 }
 
 func (o *options) Validate() error {
-	if o.topic == "" {
-		return fmt.Errorf("please set topic")
-	}
-
 	return o.service.Validate()
 }
 
@@ -38,8 +32,15 @@ func gatherOptions(fs *flag.FlagSet, args ...string) options {
 
 	o.service.AddFlags(fs)
 
-	fs.StringVar(&o.hmacSecretFile, "hmac-secret-file", "/etc/webhook/hmac", "Path to the file containing the HMAC secret.")
-	fs.StringVar(&o.topic, "topic", "", "The topic to which github webhook messages need to be published ")
+	fs.BoolVar(
+		&o.enableDebug, "enable_debug", false,
+		"whether to enable debug model.",
+	)
+
+	fs.StringVar(
+		&o.hmacSecretFile, "hmac-secret-file", "/etc/webhook/hmac",
+		"Path to the file containing the HMAC secret.",
+	)
 
 	_ = fs.Parse(args)
 	return o
@@ -47,70 +48,76 @@ func gatherOptions(fs *flag.FlagSet, args ...string) options {
 
 func main() {
 	logrusutil.ComponentInit(component)
+	log := logrus.NewEntry(logrus.StandardLogger())
 
-	o := gatherOptions(flag.NewFlagSet(os.Args[0], flag.ExitOnError), os.Args[1:]...)
+	o := gatherOptions(
+		flag.NewFlagSet(os.Args[0], flag.ExitOnError),
+		os.Args[1:]...,
+	)
 	if err := o.Validate(); err != nil {
-		logrus.WithError(err).Fatal("Invalid options")
+		logrus.Errorf("invalid options, err:%s", err.Error())
+
+		return
 	}
 
-	configAgent := config.NewConfigAgent(func() config.Config {
-		return new(configuration)
-	})
-	if err := configAgent.Start(o.service.ConfigFile); err != nil {
-		logrus.WithError(err).Fatal("Error starting config agent.")
+	if o.enableDebug {
+		logrus.SetLevel(logrus.DebugLevel)
+		logrus.Debug("debug enabled.")
 	}
 
-	secretAgent := new(secret.Agent)
-	if err := secretAgent.Start([]string{o.hmacSecretFile}); err != nil {
-		logrus.WithError(err).Fatal("Error starting secret agent.")
+	// cfg
+	cfg, err := loadConfig(o.service.ConfigFile)
+	if err != nil {
+		logrus.Errorf("load config, err:%s", err.Error())
+
+		return
 	}
 
-	defer secretAgent.Stop()
+	// init kafka
+	if err := kafka.Init(&cfg.Kafka, log, nil, ""); err != nil {
+		logrus.Errorf("init kafka, err:%s", err.Error())
 
-	getHmac := secretAgent.GetTokenGenerator(o.hmacSecretFile)
-
-	d := delivery{hmac: getHmac, topic: o.topic}
-
-	if err := initBroker(&configAgent); err != nil {
-		logrus.WithError(err).Fatal("Error init broker.")
+		return
 	}
 
+	defer kafka.Exit()
+
+	hmac, err := secret.LoadSingleSecret(o.hmacSecretFile)
+	if err != nil {
+		logrus.Errorf("load hmac, err:%s", err.Error())
+
+		return
+	}
+
+	if err = os.Remove(o.hmacSecretFile); err != nil {
+		logrus.Errorf("remove hmac, err:%s", err.Error())
+
+		return
+	}
+
+	// server
+	d := delivery{
+		topic: cfg.Topic,
+		hmac: func() []byte {
+			return hmac
+		},
+	}
+
+	defer d.wait()
+
+	run(&d, o.service.Port, o.service.GracePeriod)
+}
+
+func run(d *delivery, port int, gracePeriod time.Duration) {
 	defer interrupts.WaitForGracefulShutdown()
-	interrupts.OnInterrupt(func() {
-		configAgent.Stop()
-
-		_ = kafka.Disconnect()
-
-		d.wait()
-	})
 
 	// Return 200 on / for health checks.
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {})
 
-	// For /hook, handle a webhook normally.
-	http.Handle("/github-hook", &d)
+	// For /github-hook, handle a webhook normally.
+	http.Handle("/github-hook", d)
 
-	httpServer := &http.Server{Addr: ":" + strconv.Itoa(o.service.Port)}
+	httpServer := &http.Server{Addr: ":" + strconv.Itoa(port)}
 
-	interrupts.ListenAndServe(httpServer, o.service.GracePeriod)
-}
-
-func initBroker(agent *config.ConfigAgent) error {
-	cfg := &configuration{}
-	_, c := agent.GetConfig()
-
-	if v, ok := c.(*configuration); ok {
-		cfg = v
-	}
-
-	err := kafka.Init(
-		mq.Addresses(cfg.mqConfig().Addresses...),
-		mq.Log(logrus.WithField("module", "broker")),
-	)
-
-	if err != nil {
-		return err
-	}
-
-	return kafka.Connect()
+	interrupts.ListenAndServe(httpServer, gracePeriod)
 }
