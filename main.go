@@ -11,7 +11,6 @@ import (
 	"github.com/opensourceways/server-common-lib/interrupts"
 	"github.com/opensourceways/server-common-lib/logrusutil"
 	liboptions "github.com/opensourceways/server-common-lib/options"
-	"github.com/opensourceways/server-common-lib/secret"
 	"github.com/sirupsen/logrus"
 )
 
@@ -35,11 +34,6 @@ func gatherOptions(fs *flag.FlagSet, args ...string) options {
 	fs.BoolVar(
 		&o.enableDebug, "enable_debug", false,
 		"whether to enable debug model.",
-	)
-
-	fs.StringVar(
-		&o.hmacSecretFile, "hmac-secret-file", "/etc/webhook/hmac",
-		"Path to the file containing the HMAC secret.",
 	)
 
 	_ = fs.Parse(args)
@@ -82,24 +76,11 @@ func main() {
 
 	defer kafka.Exit()
 
-	hmac, err := secret.LoadSingleSecret(o.hmacSecretFile)
-	if err != nil {
-		logrus.Errorf("load hmac, err:%s", err.Error())
-
-		return
-	}
-
-	if err = os.Remove(o.hmacSecretFile); err != nil {
-		logrus.Errorf("remove hmac, err:%s", err.Error())
-
-		return
-	}
-
 	// server
 	d := delivery{
 		topic: cfg.Topic,
 		hmac: func() []byte {
-			return hmac
+			return []byte(cfg.Hmac)
 		},
 	}
 

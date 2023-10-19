@@ -11,6 +11,7 @@ import (
 type configuration struct {
 	Kafka     kafka.Config `json:"kafka"          required:"true"`
 	Topic     string       `json:"topic"          required:"true"`
+	Hmac      string       `json:"hmac"           required:"true"`
 	UserAgent string       `json:"user_agent"     required:"true"`
 }
 
