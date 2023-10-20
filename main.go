@@ -80,9 +80,11 @@ func main() {
 	d := delivery{
 		topic: cfg.Topic,
 		hmac: func() []byte {
-			return []byte(cfg.Hmac)
+			return cfg.Hmac
 		},
 	}
+
+	cfg.Hmac = nil
 
 	defer d.wait()
 
