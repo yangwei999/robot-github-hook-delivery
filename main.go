@@ -84,8 +84,6 @@ func main() {
 		},
 	}
 
-	cfg.Hmac = nil
-
 	defer d.wait()
 
 	run(&d, o.service.Port, o.service.GracePeriod)
